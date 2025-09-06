@@ -1,83 +1,86 @@
+# system_health.py
+# Module kiểm tra "sức khỏe hệ thống" trong HomoShield
+# Hỗ trợ cả Windows và Linux
+
 import platform
 import psutil
 import subprocess
-import json
-import shutil
 
 def get_system_info():
     """
-    Lấy thông tin cơ bản của hệ điều hành
+    Lấy thông tin cơ bản của hệ thống
     """
     return {
-        "system": platform.system(),      # Tên hệ điều hành (Windows / Linux / Darwin...)
-        "release": platform.release(),    # Phiên bản phát hành (VD: 10, 11 cho Windows, 5.15 cho Linux)
-        "version": platform.version()     # Chuỗi version chi tiết
+        "os": platform.system(),              # Tên hệ điều hành (Windows/Linux)
+        "os_version": platform.version(),     # Phiên bản OS
+        "machine": platform.machine(),        # Kiến trúc (x86_64, AMD64…)
+        "cpu_percent": psutil.cpu_percent(interval=1),  # % CPU trung bình trong 1 giây
+        "memory_percent": psutil.virtual_memory().percent,  # % RAM đang dùng
+        "disk_usage": psutil.disk_usage('/').percent        # % dung lượng ổ đĩa root
     }
 
-def get_resource_usage():
+def get_service_status():
     """
-    Lấy thông tin về tài nguyên: CPU, RAM, Disk
+    Kiểm tra trạng thái firewall cơ bản
+    - Linux: dùng ufw (nếu có)
+    - Windows: dùng netsh advfirewall
     """
-    return {
-        "cpu_percent": psutil.cpu_percent(interval=1),           # % CPU đang sử dụng (1 giây lấy mẫu)
-        "memory_percent": psutil.virtual_memory().percent,       # % RAM đang sử dụng
-        "disk_usage_percent": psutil.disk_usage('/').percent     # % dung lượng ổ đĩa root (Linux: '/', Windows: ổ C:/)
-    }
+    os_type = platform.system()
+    status = "unknown"
 
-def check_firewall_status():
-    """
-    Kiểm tra trạng thái Firewall (khác nhau giữa Windows và Linux)
-    """
-    system = platform.system()
+    try:
+        # if os_type == "Linux":
+        #     # chạy lệnh "ufw status"
+        #     output = subprocess.check_output(
+        #         ["ufw", "status"],
+        #         stderr=subprocess.STDOUT,
+        #         text=True
+        #     )
+        #     if "active" in output.lower():
+        #         status = "active"
+        #     elif "inactive" in output.lower():
+        #         status = "inactive"
 
-    if system == "Windows":
-        try:
-            # Chạy lệnh kiểm tra firewall trên Windows
+        if os_type == "Linux":
+        # chạy lệnh "ufw status"
+                output = subprocess.check_output(
+            ["ufw", "status"],
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+                status = output.lower()
+
+        elif os_type == "Windows":
+            # chạy lệnh "netsh advfirewall show allprofiles"
             output = subprocess.check_output(
                 ["netsh", "advfirewall", "show", "allprofiles"],
                 stderr=subprocess.STDOUT,
-                text=True
+                text=True,
+                shell=True
             )
-            if "ON" in output.upper():
-                return "On"
-            else:
-                return "Off"
-        except Exception:
-            return "Unknown"
+            # if "on" in output.lower():
+            #     status = "active"
+            # elif "off" in output.lower():
+            #     status = "inactive"
+            status = output.lower()
+    except Exception as e:
+        status = f"error: {e}"
 
-    elif system == "Linux":
-        try:
-            # Chạy lệnh kiểm tra UFW trên Linux
-            output = subprocess.check_output(
-                ["ufw", "status"],
-                stderr=subprocess.STDOUT,
-                text=True
-            )
-            if "active" in output.lower():
-                return "Active"
-            else:
-                return "Inactive"
-        except Exception:
-            return "Unknown"
-    else:
-        return "Unsupported OS"
+    return {"firewall_status": status}
 
-def system_health_check():
+def run_system_health_check():
     """
-    Hàm chính: tập hợp toàn bộ thông tin hệ thống
+    Hàm chính: gom tất cả thông tin lại và in ra màn hình
     """
-    health_data = {
-        "os_info": get_system_info(),
-        "resources": get_resource_usage(),
-        "services": {
-            "firewall": check_firewall_status()
-        }
-    }
-    return health_data
+    print("\n=== HomoShield: System Health Check ===")
+    system_info = get_system_info()
+    service_status = get_service_status()
+
+    for k, v in system_info.items():
+        print(f"{k}: {v}")
+
+    for k, v in service_status.items():
+        print(f"{k}: {v}")
 
 if __name__ == "__main__":
-    # Gọi hàm kiểm tra sức khỏe hệ thống
-    result = system_health_check()
-
-    # In ra kết quả dưới dạng JSON đẹp (indent=4 để dễ đọc)
-    print(json.dumps(result, indent=4))
+    run_system_health_check()
